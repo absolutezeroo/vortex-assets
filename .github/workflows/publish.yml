@@ -1,0 +1,61 @@
+# Builds the asset image on GitHub and pushes it to the registry, so nobody needs Docker on their
+# own machine and the three gigabytes never cross a home connection more than once.
+#
+# What makes this cheap after the first run: a layer that has not changed is not rebuilt, not
+# pushed, and not pulled by the server. The Dockerfile splits the tree eleven ways for exactly that
+# reason — see the comments in it, especially the one about ordering.
+
+name: publish
+
+on:
+  push:
+    branches: [main]
+
+    # A README edit should not spend ten minutes rebuilding an image that did not change.
+    paths:
+      - 'gamedata/**'
+      - 'gordon/**'
+      - 'c_images/**'
+      - 'dcr/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+
+  # So a rebuild can be forced from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+      # Without this the push is rejected with a 403 that reads like bad credentials.
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A shallow clone is the whole point: the history of a binary tree is worth nothing here,
+          # and fetching it would multiply the checkout.
+          fetch-depth: 1
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+          # Layer cache kept in the registry itself. Without it every run starts from an empty
+          # daemon and rebuilds all eleven layers, which is the difference between pushing 64 MB
+          # and pushing 2.9 GB for a furnidata edit.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max

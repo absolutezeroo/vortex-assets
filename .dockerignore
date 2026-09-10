@@ -1,0 +1,17 @@
+# The build context here is 2.9 GB, so anything excluded is time saved on every build.
+
+# Not served, and kept only so a bad edit to gamedata/ can be undone.
+gamedata_backups/
+
+# Same reason, but these sit next to the file they back up. furnidata_json.json.bak alone is 27 MB
+# in a 64 MB layer — the one layer that rebuilds every time gamedata is touched.
+*.bak
+
+# The recipe itself and its own excludes have no business inside the image.
+Dockerfile
+.dockerignore
+push-assets.sh
+.github/
+.git/
+.gitignore
+README.md

@@ -1,0 +1,12 @@
+# Everything here is already-compressed binary. Telling git so stops it wasting time trying to
+# delta-compress .nitro bundles against each other, and stops any line-ending conversion from
+# corrupting a file that only looks like text.
+*.nitro binary
+*.swf   binary
+*.png   binary
+*.gif   binary
+*.mp3   binary
+*.zip   binary
+
+# gamedata carries JSON and XML that people do edit by hand. Normalise those, and only those.
+gamedata/** text=auto
