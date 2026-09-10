@@ -1,0 +1,21 @@
+RewriteEngine On
+
+RewriteRule ^hashes\.json$              hashes.php                  [L]
+RewriteRule ^hashes$              		hashes.php                  [L]
+RewriteRule ^external_flash_texts/.+$   external_flash_texts.json   [L]
+RewriteRule ^external_variables/.+$   	external_variables.json    	[L]
+RewriteRule ^furnidata_xml/.+$   		furnidata_xml.xml    		[L]
+RewriteRule ^figuredata/.+$   			figuredata.xml    			[L]
+RewriteRule ^productdata/.+$   			productdata_xml.xml    		[L]
+RewriteRule ^furnidata_json/.+$   	    furnidata_json.json    		[L]
+RewriteRule ^productdata_json/.+$   	productdata_json.json    	[L]
+
+<IfModule mod_deflate.c>
+	AddOutputFilterByType DEFLATE application/json application/xml text/xml text/plain
+
+	# furnidata/productdata are 3-39 MB and are re-compressed on every request (Apache
+	# caches nothing here). Measured on this host: 34 MB of furnidata_xml already arrives
+	# in ~70-120 ms uncompressed, which the gzip pass alone would not beat. Left raw.
+	SetEnvIfNoCase Request_URI ^/gamedata/(furnidata|productdata) no-gzip=1
+</IfModule>
+  
