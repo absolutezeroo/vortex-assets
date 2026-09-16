@@ -2,6 +2,21 @@
     "productdata": {
         "product": [
             {
+                "code": "collectibles_stamp_1",
+                "name": "Curator Stamp",
+                "description": "One stamp. Spend it in the Collectors Guild to turn a piece of furni into a Relic."
+            },
+            {
+                "code": "collectibles_stamp_5",
+                "name": "5 Curator Stamps",
+                "description": "Five stamps, at a better rate than buying them one at a time."
+            },
+            {
+                "code": "collectibles_stamp_10",
+                "name": "10 Curator Stamps",
+                "description": "Ten stamps, the cheapest way to buy them."
+            },
+            {
                 "code": "a0 pet0",
                 "name": "Chien",
                 "description": ""
