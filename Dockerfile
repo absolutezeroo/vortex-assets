@@ -174,3 +174,15 @@ COPY <<'CADDYFILE' /etc/caddy/Caddyfile
 CADDYFILE
 
 EXPOSE 80
+
+# `/gamedata/hashes.json`, not `/`. There is no index page in this tree, so `/` answers 404 and
+# would report a perfectly healthy asset host as broken.
+#
+# The manifest is also the right thing to ask for: it is the one file this build GENERATES rather
+# than copies, and every URL the client loads afterwards comes from inside it. A 200 here proves
+# the RUN block above produced it and that Caddy is serving the tree; if it is missing, the login
+# screen still works and no room ever draws.
+#
+# wget is the busybox applet in the alpine base — this image ships no other HTTP client.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1/gamedata/hashes.json || exit 1
