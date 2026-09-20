@@ -654,7 +654,7 @@
   "snowwar.log.enabled": "false",
   "special_items.wf15.items": "wf15_act,furni,wf_ltdproto_act_toggle_state;wf15_trg,furni,wf_proto_trg_at_given_time;wf15_cnd,furni,wf_proto_cnd_trggrer_on_frn;wf15_pyramid,furni,wf_proto_pyramid",
   "stories.admin.tool.base.url": "https://theallseeingeye.sulake.com/habbo-stories-admin/#/photos/",
-  "stories.image_url_base": "http://habbo-stories-content.s3.amazonaws.com/",
+  "stories.image_url_base": "${url.prefix}/webapi/api/public/camera/",
   "stories.report.selfie.enabled": "true",
   "subscription.reminder.when.days.left": "5",
   "supersaverads.video.promo.development.mode": "false",
