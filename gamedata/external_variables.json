@@ -401,7 +401,7 @@
   "navigator.default.view": "public",
   "navigator.default_tab": "official",
   "navigator.settings.show_room_styles": "true",
-  "navigator.thumbnail.url_base": "https://habbo-stories-content.s3.amazonaws.com/navigator-thumbnail/hhus/",
+  "navigator.thumbnail.url_base": "${url.prefix}/webapi/api/public/camera/thumbnails/",
   "nest.breeding.bear.enabled": "true",
   "nest.breeding.cat.enabled": "true",
   "nest.breeding.dog.enabled": "true",
