@@ -4,3 +4,8 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 *.zip
+
+# Sauvegarde ecrite par relink-furnidata-offers.mjs a cote du fichier qu'il reecrit.
+# L'historique git est deja la vraie sauvegarde ; celle-ci sert quand le fichier
+# est rejoue hors depot.
+*.bak
