@@ -113,12 +113,50 @@ COPY <<'GENERATE' /usr/local/bin/generate-manifest
 #!/bin/sh
 set -eu
 
-# Place what the mount does not have, keep what it does. `cp -n` never overwrites, so a file the
-# dashboard edited at runtime survives every restart, while a file added to the repository appears
-# on the next deploy without anyone copying it onto the host by hand.
+# Seed the mount from the image. "Never overwrite" was the first attempt and it was wrong in the
+# other direction: it protected an operator's edits but also froze every file forever, so a
+# correction made in the repository could never reach production. Both failures are silent.
+#
+# So the state of the last seed is recorded, and each file is decided on its own:
+#
+#   absent from the mount            -> place it
+#   present, untouched since we put it there -> replace it with the image's version
+#   present and changed since        -> keep it, and say so
+#
+# "Changed since" is what the dashboard does when an operator edits gamedata at runtime. A file the
+# image has never seeded is left alone on this run and adopted on the next, which is what lets a
+# tree that was populated by hand catch up without anyone deciding what to delete.
+#
+# GAMEDATA_FORCE_SEED=all overrides the lot, for the one time somebody does want the image to win.
+SEED=/opt/gamedata-default
+STATE=/assets/gamedata/.seed-state
+
 mkdir -p /assets/gamedata
-(cd /opt/gamedata-default && find . -type d -exec mkdir -p /assets/gamedata/{} \;)
-(cd /opt/gamedata-default && find . -type f -exec cp -n {} /assets/gamedata/{} \;)
+next_state=$(mktemp)
+
+for rel in $(cd "$SEED" && find . -type f | sed 's|^\./||'); do
+    dst="/assets/gamedata/$rel"
+    mkdir -p "$(dirname "$dst")"
+
+    if [ ! -f "$dst" ]; then
+        cp "$SEED/$rel" "$dst"
+    else
+        current=$(md5sum "$dst" | cut -d' ' -f1)
+        previous=$([ -f "$STATE" ] && awk -v f="$rel" '$2 == f { print $1 }' "$STATE" | head -1 || true)
+
+        if [ "${GAMEDATA_FORCE_SEED:-}" = "all" ] || [ -n "$previous" ] && [ "$current" = "$previous" ]; then
+            cp "$SEED/$rel" "$dst"
+        elif [ -n "$previous" ]; then
+            echo "generate-manifest: $rel differs from what we seeded, keeping the live copy" >&2
+        fi
+    fi
+
+    # The md5 of what is there NOW, not of the image: that is what "has an operator touched it
+    # since?" has to compare against on the next start.
+    echo "$(md5sum "$dst" | cut -d' ' -f1)  $rel" >> "$next_state"
+done
+
+mv "$next_state" "$STATE"
 
 cd /assets/gamedata
 
