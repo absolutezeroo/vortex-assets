@@ -77,15 +77,31 @@ COPY gordon              /assets/gordon
 COPY gamedata /assets/gamedata
 
 # --- the manifest, generated ---------------------------------------------------------------------
-# The same seven entries hashes.php emitted, in the same order, with the same rule for a missing
-# file: hash "1". That fallback is not a placeholder to clean up — furnidata_xml.xml and
-# productdata_xml.xml genuinely do not exist in this tree, the client uses the _json pair, and the
-# PHP behaved identically.
+# The same entries hashes.php emitted, with the same rule for a missing file: hash "1". That
+# fallback is not a placeholder to clean up — furnidata_xml.xml and productdata_xml.xml genuinely do
+# not exist in this tree, the client uses the _json pair, and the PHP behaved identically.
 #
 # md5sum rather than a checksum of our own choosing: it is what md5_file() produced, so a client
 # holding a cached copy from the Apache days does not re-download the world on the first boot after
 # the move.
-RUN <<'GENERATE' sh
+#
+# ---------------------------------------------------------------------------------------------
+# Why this is a SCRIPT and runs at STARTUP, not just at build
+# ---------------------------------------------------------------------------------------------
+# /assets/gamedata is a bind mount in production (/data/vortex/gamedata on the host), because the
+# dashboard writes these files at runtime — external_variables, furnidata, the texts. A mount
+# SHADOWS the image's directory, so a manifest generated at build time never reaches the served
+# tree, and the one being served is whatever file happens to sit in the host directory.
+#
+# That had already gone wrong before this script existed: on 2026-09-21 the hotel was serving a
+# hashes.json from 2026-09-13 while external_variables.json beside it had been edited on the 20th.
+# Eight days of gamedata edits that no client could see, because the manifest still named the old
+# hashes, and nothing anywhere said so.
+#
+# So the manifest is regenerated on every container start, against whatever is actually mounted.
+# The build-time run below stays, so the image is still correct when nothing is mounted over it.
+COPY <<'GENERATE' /usr/local/bin/generate-manifest
+#!/bin/sh
 set -eu
 
 cd /assets/gamedata
@@ -145,16 +161,33 @@ for dir in */; do
 done
 
 # A manifest that named the wrong host would fail later and elsewhere — as a room that never
-# draws — so it fails here instead. Written as an `if`, not `grep && exit`: under `set -e` the
-# latter is the LAST command, so a grep that finds nothing (the good case) would fail the build.
+# draws — so it says so here instead. Written as an `if`, not `grep && exit`: under `set -e` the
+# latter is the LAST command, so a grep that finds nothing (the good case) would fail the script.
 if grep -q 'vortex-assets\.local' hashes.json; then
-    echo 'hashes.json still names the development host'
+    echo 'generate-manifest: hashes.json still names the development host' >&2
     exit 1
 fi
 
-# The sources of the two Apache-only files have no business in the image.
+# The sources of the two Apache-only files have no business in the served tree. They are the
+# development host's, and a mount can carry them in.
 rm -f hashes.php .htaccess
+
+echo "generate-manifest: $(grep -o '"name"' hashes.json | wc -l) entries, $(ls -d */ 2>/dev/null | wc -l) language manifest(s)"
 GENERATE
+
+# The build-time run: an image nobody mounts over still serves a correct manifest, and the
+# HEALTHCHECK below has something to ask for.
+RUN chmod +x /usr/local/bin/generate-manifest && ASSETS_BASE_URL="${ASSETS_BASE_URL}" /usr/local/bin/generate-manifest
+
+# Regenerate against whatever is mounted, then hand over to Caddy's own entrypoint unchanged.
+COPY <<'ENTRYPOINT' /usr/local/bin/entrypoint
+#!/bin/sh
+set -eu
+/usr/local/bin/generate-manifest || echo 'entrypoint: manifest generation failed, serving what is there' >&2
+exec /usr/bin/caddy "$@"
+ENTRYPOINT
+
+RUN chmod +x /usr/local/bin/entrypoint
 
 # --- how it is served ----------------------------------------------------------------------------
 COPY <<'CADDYFILE' /etc/caddy/Caddyfile
@@ -234,7 +267,16 @@ COPY <<'CADDYFILE' /etc/caddy/Caddyfile
 }
 CADDYFILE
 
+# An ARG exists only during the build, and the entrypoint needs the same value at every start --
+# without this the regenerated manifest would name an empty host and no asset would load.
+ENV ASSETS_BASE_URL=${ASSETS_BASE_URL}
+
 EXPOSE 80
+
+# Redefining ENTRYPOINT resets the base image's CMD, so caddy's own arguments are restated here
+# rather than inherited. They are the ones caddy:2-alpine ships.
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
 
 # `/gamedata/hashes.json`, not `/`. There is no index page in this tree, so `/` answers 404 and
 # would report a perfectly healthy asset host as broken.
