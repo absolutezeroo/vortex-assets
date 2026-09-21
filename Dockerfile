@@ -74,7 +74,16 @@ COPY gordon              /assets/gordon
 
 # --- what actually changes ---------------------------------------------------------------------
 # Last on purpose. Everything above survives an edit here.
-COPY gamedata /assets/gamedata
+#
+# Into /opt, not /assets: in production /assets/gamedata is a bind mount, and a mount SHADOWS
+# whatever the image put there. Copied to the served path, these files would be invisible -- which
+# is exactly what happened when the split texts files were added to this repo, built into the image,
+# deployed successfully, and answered 404 because the host directory did not have them.
+#
+# So this is the seed, and the entrypoint copies from it into the mount: a file the mount does not
+# have is placed, a file it already has is LEFT ALONE. The dashboard writes into that same directory
+# at runtime, so overwriting would throw away an operator's edits on every restart.
+COPY gamedata /opt/gamedata-default
 
 # --- the manifest, generated ---------------------------------------------------------------------
 # The same entries hashes.php emitted, with the same rule for a missing file: hash "1". That
@@ -103,6 +112,13 @@ COPY gamedata /assets/gamedata
 COPY <<'GENERATE' /usr/local/bin/generate-manifest
 #!/bin/sh
 set -eu
+
+# Place what the mount does not have, keep what it does. `cp -n` never overwrites, so a file the
+# dashboard edited at runtime survives every restart, while a file added to the repository appears
+# on the next deploy without anyone copying it onto the host by hand.
+mkdir -p /assets/gamedata
+(cd /opt/gamedata-default && find . -type d -exec mkdir -p /assets/gamedata/{} \;)
+(cd /opt/gamedata-default && find . -type f -exec cp -n {} /assets/gamedata/{} \;)
 
 cd /assets/gamedata
 
