@@ -735,10 +735,10 @@
   "localization.1": "en",
   "localization.1.code": "en",
   "localization.1.name": "English",
-  "localization.1.url": "${url.prefix}/gamedata/en/external_flash_texts/1",
+  "localization.1.url": "${url.prefix}/gamedata/en/hashes.json",
   "localization.2": "fr",
   "localization.2.code": "fr",
   "localization.2.name": "Français",
-  "localization.2.url": "${url.prefix}/gamedata/fr/external_flash_texts/1",
+  "localization.2.url": "${url.prefix}/gamedata/fr/hashes.json",
   "activitypoint.name.2000": "${seasonalcurrency.id.2000}.currency.name"
 }
