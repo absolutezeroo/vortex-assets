@@ -22,7 +22,11 @@
 # Neither survives in a static container. So the manifest is GENERATED HERE, at build time, from
 # the same files with the same md5s — and it comes out better than the PHP did, because the base
 # URL is an argument rather than a line someone has to remember to edit. The rewrites become Caddy
-# matchers at the bottom of this file, one per line, the same seven.
+# matchers at the bottom of this file, one per line.
+#
+# Keep the two in step. The development host still has hashes.php and .htaccess and they are what
+# Laragon serves; this file is what production serves, and an entry added to one and not the other
+# is a file that loads locally and is silently absent live.
 #
 # ---------------------------------------------------------------------------------------------
 # Why the COPY is split
@@ -88,21 +92,57 @@ cd /assets/gamedata
 
 hash_of() { [ -f "$1" ] && md5sum "$1" | cut -d' ' -f1 || echo 1; }
 
-entry() { printf '{"name":"%s","url":"%s/%s","hash":"%s"}' "$1" "$BASE" "$2" "$(hash_of "$3")"; }
+entry() { printf '{"name":"%s","url":"%s/%s","hash":"%s"}' "$1" "$2" "$3" "$(hash_of "$4")"; }
 
 BASE="${ASSETS_BASE_URL}/gamedata"
 
-{
+# Always published, with hash 1 when the file is absent: isValid() on the client wants
+# external_texts, external_variables, furnidata AND productdata, and rejects the whole manifest
+# without them -- leaving one out does not degrade the manifest, it kills it.
+shared() {
+    entry external_variables "$BASE" external_variables external_variables.json; printf ','
+    entry furnidata          "$BASE" furnidata_xml      furnidata_xml.xml;       printf ','
+    entry figuredata         "$BASE" figuredata         figuredata.xml;          printf ','
+    entry productdata        "$BASE" productdata        productdata_xml.xml;     printf ','
+    entry furnidata_json     "$BASE" furnidata_json     furnidata_json.json;     printf ','
+    entry productdata_json   "$BASE" productdata_json   productdata_json.json
+}
+
+# A texts file: the language's own copy when it has one, the root otherwise, and nothing at all
+# when neither exists -- an advertised file that is not there is one the client fetches and 404s
+# on. So a language ships only the keys it translates: the root file loads first and the rest
+# merges over it.
+texts() {
+    name="$1"; slug="$2"; file="$3"; lang="$4"
+
+    if [ -n "$lang" ] && [ -f "$lang/$file" ]; then
+        printf ','; entry "$name" "$BASE/$lang" "$slug" "$lang/$file"
+    elif [ -f "$file" ]; then
+        printf ','; entry "$name" "$BASE" "$slug" "$file"
+    fi
+}
+
+# external_text_* are the texts split by domain. The client loads external_texts and then every
+# external_text_* entry into the same key store, in the order they appear here -- so a key defined
+# twice keeps the value from the file listed last.
+manifest() {
     printf '{"hashes":['
-    entry external_texts     external_flash_texts external_flash_texts.json; printf ','
-    entry external_variables external_variables   external_variables.json;   printf ','
-    entry furnidata          furnidata_xml        furnidata_xml.xml;         printf ','
-    entry figuredata         figuredata           figuredata.xml;            printf ','
-    entry productdata        productdata          productdata_xml.xml;       printf ','
-    entry furnidata_json     furnidata_json       furnidata_json.json;       printf ','
-    entry productdata_json   productdata_json     productdata_json.json
+    shared
+    texts external_texts        external_flash_texts  external_flash_texts.json  "$1"
+    texts external_text_catalog external_catalog_text external_catalog_text.json "$1"
+    texts external_text_badges  external_badges_text  external_badges_text.json  "$1"
     printf ']}'
-} > hashes.json
+}
+
+manifest "" > hashes.json
+
+# One manifest per language directory: that is what localization.<n>.url in external_variables
+# points at, and the client parses it as a manifest rather than as texts.
+for dir in */; do
+    lang="${dir%/}"
+    case "$lang" in *[!a-zA-Z0-9-]*) continue ;; esac
+    manifest "$lang" > "$lang/hashes.json"
+done
 
 # A manifest that named the wrong host would fail later and elsewhere — as a room that never
 # draws — so it fails here instead. Written as an `if`, not `grep && exit`: under `set -e` the
@@ -136,6 +176,8 @@ COPY <<'CADDYFILE' /etc/caddy/Caddyfile
 	# What .htaccess did with seven RewriteRules. The client asks for <name>/<hash> — the hash is
 	# a cache-buster in the path, not a directory — and each maps to one real file.
 	@texts            path /gamedata/external_flash_texts/*
+	@catalog_texts    path /gamedata/external_catalog_text/*
+	@badges_texts     path /gamedata/external_badges_text/*
 	@variables        path /gamedata/external_variables/*
 	@furnidata_xml    path /gamedata/furnidata_xml/*
 	@figuredata       path /gamedata/figuredata/*
@@ -144,6 +186,8 @@ COPY <<'CADDYFILE' /etc/caddy/Caddyfile
 	@productdata_json path /gamedata/productdata_json/*
 
 	rewrite @texts            /gamedata/external_flash_texts.json
+	rewrite @catalog_texts    /gamedata/external_catalog_text.json
+	rewrite @badges_texts     /gamedata/external_badges_text.json
 	rewrite @variables        /gamedata/external_variables.json
 	rewrite @furnidata_xml    /gamedata/furnidata_xml.xml
 	rewrite @figuredata       /gamedata/figuredata.xml
@@ -151,8 +195,19 @@ COPY <<'CADDYFILE' /etc/caddy/Caddyfile
 	rewrite @furnidata_json   /gamedata/furnidata_json.json
 	rewrite @productdata_json /gamedata/productdata_json.json
 
+	# The same thing one directory down, for every language at once. A regexp rather than nine more
+	# matchers per language: the set of languages is decided in external_variables, not here, and a
+	# language whose rewrite someone forgot to add would lose its texts silently.
+	# It cannot swallow the rules above: it needs three segments after /gamedata/, and the second
+	# has to start with `external_`.
+	@lang_texts path_regexp lt ^/gamedata/([a-zA-Z0-9-]+)/(external_[a-z_]+)/.+$
+	rewrite @lang_texts /gamedata/{re.lt.1}/{re.lt.2}.json
+
 	# `hashes` and `hashes.json` both answered the PHP; now both answer the generated file.
 	rewrite /gamedata/hashes /gamedata/hashes.json
+
+	@lang_hashes path_regexp lh ^/gamedata/([a-zA-Z0-9-]+)/hashes(\.json)?$
+	rewrite @lang_hashes /gamedata/{re.lh.1}/hashes.json
 
 	file_server
 
@@ -170,6 +225,12 @@ COPY <<'CADDYFILE' /etc/caddy/Caddyfile
 	# thing that must not be cached, or a new hash would never be seen.
 	header Cache-Control "public, max-age=604800"
 	header /gamedata/hashes* Cache-Control "no-cache"
+
+	# Same for a language's own manifest: `/gamedata/hashes*` does not match one directory down, so
+	# without this a translation would be published and no client would see it until its cache aged
+	# out a week later.
+	@any_hashes path_regexp ^/gamedata/([a-zA-Z0-9-]+/)?hashes(\.json)?$
+	header @any_hashes Cache-Control "no-cache"
 }
 CADDYFILE
 
