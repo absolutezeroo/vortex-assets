@@ -2,7 +2,16 @@ RewriteEngine On
 
 RewriteRule ^hashes\.json$              hashes.php                  [L]
 RewriteRule ^hashes$              		hashes.php                  [L]
+
+# One language: gamedata/<code>/hashes is that language's manifest, and gamedata/<code>/<name>/<hash>
+# is one of its texts files. The code is bounded here as well as in hashes.php -- these two rules are
+# the only ones that take a path segment from the URL.
+RewriteRule ^([A-Za-z0-9-]{1,16})/hashes(\.json)?$              hashes.php?lang=$1   [L,QSA]
+RewriteRule ^([A-Za-z0-9-]{1,16})/(external_[a-z_]+)/.+$        $1/$2.json           [L]
+
 RewriteRule ^external_flash_texts/.+$   external_flash_texts.json   [L]
+RewriteRule ^external_catalog_text/.+$  external_catalog_text.json  [L]
+RewriteRule ^external_badges_text/.+$   external_badges_text.json   [L]
 RewriteRule ^external_variables/.+$   	external_variables.json    	[L]
 RewriteRule ^furnidata_xml/.+$   		furnidata_xml.xml    		[L]
 RewriteRule ^figuredata/.+$   			figuredata.xml    			[L]
